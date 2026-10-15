@@ -1,0 +1,19 @@
+require 'json'
+
+package = JSON.parse(File.read(File.join(__dir__, 'package.json')))
+
+Pod::Spec.new do |s|
+  s.name = 'CapacitorYoutubePlayer'
+  s.version = package['version']
+  s.summary = package['description']
+  s.license = package['license']
+  s.homepage = 'https://github.com/szymanskialan50-svg/music-player-ios'
+  s.author = package['author']
+  s.source = { :git => 'https://github.com/szymanskialan50-svg/music-player-ios.git', :tag => s.version.to_s }
+  s.source_files = 'ios/Plugin/**/*.{swift,h,m,c,cc,mm,cpp}'
+  s.ios.deployment_target  = '15.0'
+  s.dependency 'Capacitor', '~> 8.0'
+  s.swift_version = '5.9'
+  s.pod_target_xcconfig = { 'SWIFT_VERSION' => '5.9', 'SWIFT_STRICT_CONCURRENCY' => 'minimal' }
+  s.resources = 'ios/Plugin/**/*.html'
+end

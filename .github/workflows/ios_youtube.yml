@@ -1,0 +1,84 @@
+name: iOS Build with YouTube Player
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Finds the folder that holds package.json (repo root OR a subfolder),
+      # so this works no matter how the project was uploaded.
+      - name: Locate project directory
+        run: |
+          pkg=$(find . -maxdepth 4 -name package.json -not -path "*/node_modules/*" -not -path "*/capacitor-youtube-player/*" | awk '{ print length, $0 }' | sort -n | cut -d" " -f2- | head -n 1)
+          if [ -z "$pkg" ]; then echo "::error::package.json not found"; exit 1; fi
+          dir=$(dirname "$pkg"); dir=${dir#./}; [ -z "$dir" ] && dir="."
+          echo "Project dir: $dir"
+          echo "PROJECT_DIR=$dir" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: bun install
+
+      - name: Build Web
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: npm run prepare:www
+
+      - name: Add iOS Platform
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: npx cap add ios --packagemanager cocoapods
+
+      - name: Sync iOS
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: npx cap sync ios
+
+      - name: Enable Background Audio in Info.plist
+        working-directory: ${{ env.PROJECT_DIR }}/ios/App/App
+        run: |
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" Info.plist || true
+
+      - name: Install CocoaPods dependencies
+        working-directory: ${{ env.PROJECT_DIR }}/ios/App
+        run: pod install --repo-update
+
+      # Exit code 65 from xcodebuild only means "some build step failed" - the
+      # real reason is a line containing "error:" far above the tail of the log.
+      # We save the full log, print just the error lines, and upload the log.
+      - name: Build unsigned IPA
+        working-directory: ${{ env.PROJECT_DIR }}/ios/App
+        run: |
+          set -o pipefail
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
+            -sdk iphoneos -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" archive 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" || {
+              echo "::group::xcodebuild ERRORS"
+              grep -nE "error:|fatal error|\*\* ARCHIVE FAILED" "$RUNNER_TEMP/xcodebuild.log" | head -60
+              echo "::endgroup::"
+              exit 65
+            }
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -r "$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app" "$RUNNER_TEMP/Payload/"
+          cd "$RUNNER_TEMP"
+          zip -r -q App.ipa Payload
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/xcodebuild.log
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-youtube-app
+          path: ${{ runner.temp }}/App.ipa
