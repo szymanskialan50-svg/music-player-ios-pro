@@ -1834,15 +1834,10 @@ function createYTPlayer(){
         if (e.data === YT.PlayerState.PLAYING) { 
             state.isPlaying = true; updPlayUI(); startYtTick(); 
             if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'; 
-            let a = document.getElementById('audioEl');
-            if (a && !a.src) { a.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA=="; a.loop = true; }
-            if (a) a.play().catch(()=>{});
         }
         else if (e.data === YT.PlayerState.PAUSED) { 
             state.isPlaying = false; updPlayUI(); 
             if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused'; 
-            let a = document.getElementById('audioEl');
-            if (a) a.pause();
         }
         else if (e.data === YT.PlayerState.ENDED) { stopYtTick(); onEnded(); }
       },
